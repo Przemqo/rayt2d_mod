@@ -8,7 +8,8 @@
 /*********************** self documentation **********************/
 char *sdoc[] = {
 "									",
-" RAYT2D - traveltime Tables calculated by 2D paraxial RAY tracing	",
+" RAYT2D_mod - traveltime Tables calculated by 2D paraxial RAY tracing	",
+" With shot positions at arbitrary depth	",
 "									",
 "     rayt2d vfile= tfile= [optional parameters]			",
 "									",
@@ -37,6 +38,7 @@ char *sdoc[] = {
 "									",
 " surf=\"0,0;99999,0\"  Recording surface \"x1,z1;x2,z2;x3,z3;...\"	",
 " fxs=fx		x-coordinate of first source			",
+" fzs=0			z-coordinate of the source/sources			",
 " nxs=1			number of sources				",
 " dxs=2*dxo		x-coordinate increment of sources		",
 " aperx=0.5*nx*dx  	ray tracing aperature in x-direction		",
@@ -185,8 +187,8 @@ void zcoorTopog(float fxs,float dxs,int nxs,Surface *srf,float *sz,
 int
 main(int argc, char **argv)
 {
-	int	na,nat,nt,nxs,nxo,nzo,nx,nz,nxt,nx0,mx,npv,nsrf,*nxzsrf;
-	float	dt,xs,fxs,dxs,exs,fxo,fzo,dxo,dzo,exo,ezo,fa,ea,amin,eat,
+	int	na,nat,nt,nxs,nxo,nzo,nx,nz,nxt,nx0,mx,npv,nsrf,*nxzsrf;	
+	float	dt,xs,fxs,fzs,dxs,exs,fxo,fzo,dxo,dzo,exo,ezo,fa,ea,amin,eat,	//fzs
 		amax,da,fat,fac,tmax,aperx,temp,fx,fz,dx,dz,ex,ez,fxt,ext;
 	float	*v,*vt,*t,*ov2,*pv=NULL,*pvt=NULL,*tv=NULL,*cs=NULL,*vo=NULL,
 		**xsrf,**zsrf,*szi,*nangl;
@@ -237,6 +239,7 @@ main(int argc, char **argv)
 
 	if(!getparint("nxs",&nxs)) nxs = 1;
 	if(!getparfloat("fxs",&fxs)) fxs = fx;
+	if(!getparfloat("fzs",&fzs)) fzs = 0.; 		//New
 	if(!getparfloat("dxs",&dxs)) dxs = 2*dxo;
 	exs = fxs+(nxs-1)*dxs;
 	if( !getparfloat("aperx",&aperx)) aperx = 0.5*(ex-fx);
@@ -325,6 +328,7 @@ main(int argc, char **argv)
 	fprintf(jpfp," nzo=%d fzo=%g dzo=%g\n",nzo,fzo,dzo);
 	fprintf(jpfp," nxo=%d fxo=%g dxo=%g\n",nxo,fxo,dxo);
  	fprintf(jpfp," nxs=%d fxs=%g dxs=%g\n",nxs,fxs,dxs);
+	fprintf(jpfp," fzs=%g",fzs);
  	fprintf(jpfp," mx=%d aperx=%g \n",mx,aperx);
  	fprintf(jpfp," na=%d fa=%g da=%g\n",na,fa*180/PI,da*180/PI);
  	fprintf(jpfp," amin=%g amax=%g \n",amin*180/PI,amax*180/PI);
@@ -380,9 +384,16 @@ main(int argc, char **argv)
 	decodeSurfaces(&nsrf,&nxzsrf,&xsrf,&zsrf);
         makesurf(dxs*0.025,nsrf,nxzsrf,xsrf,zsrf,&srf);
 
+	/* Z coordinate of the source assignment, omitting source surface evaluation */
         szi = alloc1float(nxs);
-	nangl = ealloc1float(nxs);
-        zcoorTopog(fxs,dxs,nxs,srf,szi,nangl);
+		for(ixs=0;ixs<nxs;ixs++)
+		{
+			szi[ixs] = fzs;
+		}
+
+		/*Code for angle normal to z, ommited*/
+		//nangl = ealloc1float(nxs);
+        //zcoorTopog(fxs,dxs,nxs,srf,szi,nangl);
 
 	/* loop over sources */
 	for(ixs=ixs0,xs=fxs+ixs0*dxs;ixs<nxs;ixs++,xs+=dxs){
@@ -406,17 +417,20 @@ main(int argc, char **argv)
 		if(npv) trans(nx,nz,nxt,nx0,pv,pvt);
 
 		/* determine range of take-off angles	*/
-		fat = fa + nangl[ixs];
-		eat = ea + nangl[ixs];
-		nat = na;
-		if (fat<-(PI/2)) fat = -PI/2;
-		if (eat>(PI/2)) eat = PI/2;
+		/*Heavily reduced, we will shot in all directions*/
+		fat = fa ;//+ nangl[ixs];
+		eat = ea ;//+ nangl[ixs];
+		nat = na ;
+		//if (fat<-(PI/2)) fat = -PI/2;
+		//if (eat>(PI/2)) eat = PI/2;
+
+		/*
 		if(xs==fxt && fat<0) {
 			fat = 0.;
 			nat = eat/da+1.5;
 		} else if(xs==ext && eat>0)
 			nat = 1.5-fa/da;
-
+		*/
 
 		/* update geometry information	*/
 		raytr.xs = xs;		raytr.zs = szi[ixs];
@@ -1032,7 +1046,7 @@ Author: Zhenyue Liu, CSM 1995.
 	for(ia=0,a=fa; ia<na; ++ia,a+=da){  
 	
 /*		trace rays	*/
-		makeRay(geo2dv,v,vxx,vxz,vzz,raytr,a,&nrs,ray,npv,pv);
+		makeRay(geo2dv,v,vxx,vxz,vzz,raytr,a,&nrs,ray,npv,pv);////////////////////////////
 
 /*		extropolate to grids near central rays	*/
 		    v0 = ray[0].v;
