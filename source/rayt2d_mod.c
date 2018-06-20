@@ -36,7 +36,7 @@ char *sdoc[] = {
 " nxo=nx		number of lateral samples in traveltime table	",
 " dxo=dx		lateral interval in traveltime table		",
 "									",
-" surf=\"0,0;99999,0\"  Recording surface \"x1,z1;x2,z2;x3,z3;...\"	",
+" surf=\"0,0;99999,0\"  reflecting surface \"x1,z1;x2,z2;x3,z3;...\"	",
 " fxs=fx		x-coordinate of first source			",
 " fzs=0			z-coordinate of the source/sources			",
 " nxs=1			number of sources				",
@@ -380,9 +380,12 @@ main(int argc, char **argv)
 	fprintf(jpfp," begin traveltime calculation\n");
 	fflush(jpfp);
 
-	/* Estimation of the recording surface 	*/
+	/* Estimation of the reflecting surface 	*/
 	decodeSurfaces(&nsrf,&nxzsrf,&xsrf,&zsrf);
-        makesurf(dxs*0.025,nsrf,nxzsrf,xsrf,zsrf,&srf);
+    makesurf(dxs*0.025,nsrf,nxzsrf,xsrf,zsrf,&srf);
+
+
+
 
 	/* Z coordinate of the source assignment, omitting source surface evaluation */
         szi = alloc1float(nxs);
