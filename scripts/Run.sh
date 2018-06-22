@@ -25,7 +25,7 @@ rm -f < $time_model
 
 #Input parameters for Rayt2d
 #dt=0.004       #time sample interval in ray tracing             
-nt=802      	#number of time samples in ray tracing           
+#nt=401     	#number of time samples in ray tracing      nt=$nt     
                                                                         
 fz=0            #first depth sample in velocity                  
 nz=151        	# number of depth samples in velocity             
@@ -34,13 +34,13 @@ fx=0          	#first lateral sample in velocity
 nx=251        	#number of lateral samples in velocity           
 dx=20         	#lateral interval in velocity    
 
-nxs=125   	    #Number of sources      &
+nxs=1 	    	#Number of sources      &
 #fzs=0           #Depth of the sources fzs=$fzs
 #fxs=0	        #Coordinate of first source fxs=$fxs
 
-#fa=45           #First take-off angle
-#na=60           #Number of rays
-#da=2            #Increment of take-off angle fa=$fa na=$na da=$da
+fa=45           #First take-off angle
+na=30          	#Number of rays
+#da=2           #Increment of take-off angle fa=$fa na=$na da=$da
 
 
 #amin=0          #Minimum angle of emergence
@@ -48,6 +48,7 @@ nxs=125   	    #Number of sources      &
 
 #Reflector surface
 #surf="0,740;99999,740" surf=$surf
+refl="0,740;99999,740"
 
 
 #smooth2 n1=151 n2=251 r1=5 r2=5 < $vel_model > temp.bin
@@ -69,8 +70,8 @@ psimage < $vel_model  style=seismic \
 
 
 # use rayt2d to generate traveltime tables from model
-rayt2d fz=$fz nz=$nz dz=$dz fx=$fx nx=$nx dx=$dx \
-nxs=$nxs nt=$nt vfile=$vel_model tfile=$time_model 
+rayt2d_mod fz=$fz nz=$nz dz=$dz fx=$fx nx=$nx dx=$dx \
+nxs=$nxs fa=$fa na=$na vfile=$vel_model tfile=$time_model refl=$refl
 
 #Calculated traveltime cube PS
 pscube < $time_model n1=$nz d1=$dz f1=$fz label1="$labelz" \
