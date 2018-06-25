@@ -165,7 +165,7 @@ void makeRay (Geo2d geo2dv,float *v,float *vxx,float *vxz,float *vzz,
 	Raytr raytr,float a0,int *nrs,Ray *ray,int npv,float *pv);
 
 void raytime2d(Raytr raytr,Geo2d geo2dv,float *vt,Geo2d geo2dt,float *t,
-	int npv,float *vo,float *pv,float *tv,float *cs, Boundary **bnd);
+	int npv,float *vo,float *pv,float *tv,float *cs, Boundary ***bnd);
 
 void voint(Geo2d geo2dv,float *v,Geo2d geo2dt,float *ov2,int npv,float *vo);
 
@@ -191,8 +191,9 @@ void zcoorTopog(float fxs,float dxs,int nxs,Surface *srf,float *sz,
                 float *nangl);
 
 void decodeBoundaries(int *nrPtr,int **nxzPtr,float ***xPtr,float ***zPtr);
-//void make_boundaries(int nr,int *nu,float **xu,float **zu,int nxs, int fa,
-//int na, Boundary ***r);
+
+void make_boundaries(int nr,int nxs, int na,int *nu,float **xu,float **zu,
+        Boundary ****r);
 
 float round2grid(float input, float factor);
 
@@ -208,8 +209,7 @@ main(int argc, char **argv)
 	Geo2d geo2dv, geo2dt;
 	Raytr raytr;
     Surface *srf;
-	Boundary **bnd;
-	Boundary *bnd1;
+	Boundary ***bnd;
 	char *vfile="stdin",*tfile="stdout",*jpfile,*pvfile,*tvfile,*csfile;
 	char *restart;
 	FILE *vfp, *tfp, *jpfp, *pvfp=NULL, *tvfp=NULL, *csfp=NULL;
@@ -396,10 +396,7 @@ main(int argc, char **argv)
 
 	/* Estimation of the reflecting surface 	*/
 	decodeBoundaries(&nsrf,&nxzsrf,&xsrf,&zsrf);
-    //makeBoundaries(dxs*0.025,nsrf,nxzsrf,xsrf,zsrf,&bnd1);
-
-
-
+	make_boundaries(nsrf,nxs,na,nxzsrf,xsrf,zsrf,&bnd);
 
 	/* Z coordinate of the source assignment, omitting source surface evaluation */
         szi = alloc1float(nxs);
@@ -412,23 +409,6 @@ main(int argc, char **argv)
 		//nangl = ealloc1float(nxs);
         //zcoorTopog(fxs,dxs,nxs,srf,szi,nangl);
 	
-	/*Creating boundary struct, with values for each source*/
-	bnd=(Boundary **)ealloc2(nxs,na,sizeof(Boundary));
-	for(ixs=ixs0;ixs<nxs;ixs++){
-		for (ian=0,an=fa;ian<na;++ian,an=an+da){
-			bnd[ixs][ian].z=840.0;
-			bnd[ixs][ian].x=INITIAL_T;
-			bnd[ixs][ian].angle=an;
-			bnd[ixs][ian].flag=0;
-		};
-	};
-	/*Debug
-	for(ixs=0;ixs<30;++ixs){
-		printf("Z %f\n",bnd[0][ixs].z);
-		printf("X %f\n",bnd[0][ixs].x);
-		printf("A %f\n",bnd[0][ixs].angle);
-	};*/
-
 
 	/* loop over sources */
 	for(ixs=ixs0,xs=fxs+ixs0*dxs;ixs<nxs;ixs++,xs+=dxs){
@@ -446,7 +426,7 @@ main(int argc, char **argv)
 		vt = alloc1float(nxt*nz);
 		if(npv) pvt = alloc1float(nxt*nz);
 
-	        /* reducing velocity volume due to aperture	*/
+	    /* reducing velocity volume due to aperture	*/
 		trans(nx,nz,nxt,nx0,v,vt);
 		if(npv) trans(nx,nz,nxt,nx0,pv,pvt);
 
@@ -471,15 +451,8 @@ main(int argc, char **argv)
 		raytr.na = nat;		raytr.fa = fat;		
 		geo2dv.nx = nxt;	geo2dv.fx = fxt;
 		
-	        /* compute traveltime by paraxial ray tracing	*/
+	    /* compute traveltime by paraxial ray tracing	*/
 		raytime2d(raytr,geo2dv,vt,geo2dt,t,npv,vo,pvt,tv,cs,bnd);
-
-		/*Debug
-		for(ixs=0;ixs<30;++ixs){
-			printf("Z %f\n",bnd[0][ixs].z);
-			printf("X %f\n",bnd[0][ixs].x);
-			printf("A %f\n",bnd[0][ixs].angle);
-		};*/
 
 		/*make up in shadow zones by eikonal equation	*/
 		if(ek) eiknl(geo2dt,t,ov2,tmax);
@@ -558,6 +531,40 @@ zPtr            array[z][nr] of z values for each surface
         *nxzPtr = nxz;
         *xPtr = x;
         *zPtr = z;
+}
+
+/*****************************************************************************
+Make array of boundaries holding parameters for each boundary,source,angle
+******************************************************************************
+Input:
+nr              number of surfaces = 1
+nxs				number of sources = 1
+na				number of rays	= 61
+nu              array[nr] of numbers of (x,z) pairs; u = 0, 1, ..., nu[ir]
+xu              array[nr][nu[ir]] of surface x coordinates x(u)
+zu              array[nr][nu[ir]] of surface z coordinates z(u)
+
+Output:
+r               array[boundary_no][source_no][ray_no] of boundaries
+******************************************************************************/
+void make_boundaries(int nr,int nxs,int na,int *nu,float **xu,float **zu,
+        Boundary ****r)
+{
+	int ir,is,ia;
+	Boundary ***rr;
+
+	*r = rr = (Boundary ***)(ealloc3(nr,nxs,na,sizeof(Boundary)));
+	for (ir=0; ir<nr; ++ir) {
+		for(is=0;is<nxs;++is){
+			for(ia=0;ia<na;++ia){	
+				rr[ir][is][ia].z=zu[ir][0];
+				rr[ir][is][ia].x=INITIAL_T;
+				rr[ir][is][ia].angle=45.0;
+				rr[ir][is][ia].flag=0;
+			};
+		};
+	};
+
 }
 
 /**********************************************************************
@@ -659,125 +666,8 @@ zPtr            array of z values for one surface
         *xPtr = x;
         *zPtr = z;
         return 1;
+
 }
-
-/*
-void make_boundaries(int nr,int *nu,float **xu,float **zu,int nxs, int fa,
-int na, Boundary ***r)
-/*****************************************************************************
-Make boundaries structs
-******************************************************************************
-Input:
-dsmax           maximum length of surface segment
-nr              number of surfaces = 2
-nu              array[nr] of numbers of (x,z) pairs; u = 0, 1, ..., nu[ir]
-xu              array[nr][nu[ir]] of surface x coordinates x(u)
-zu              array[nr][nu[ir]] of surface z coordinates z(u)
-
-Output:
-r               array[nr][ixs][nan] of surfaces
-******************************************************************************
-Notes:
-Space for the nu, xu, and zu arrays is freed by this function, since
-they are only used to construct the surfaces.
-*****************************************************************************
-{
-        int ixs,ian,ir;
-        float x,z,xlast,zlast,dx,dz,duu,uu,ds,fs,rsx,rsz,rsxd,rszd,
-                *u,*s,(*xud)[4],(*zud)[4],*us;
-        //SurfaceSegment *ss;
-        Boundary *rr;
-		Boundary **bb;
-
-        /* allocate space for boundaries 
-		bb=(Boundary **)ealloc2(nxs,na,sizeof(Boundary));
-        *r = bb = ealloc1(nr,sizeof(Boundary));
-		
-
-        /* loop over boundaries 
-        for (ir=0; ir<nr; ++ir) {
-			for(ixs=ixs0;ixs<nxs;ixs++){
-				for (ian=0,an=fa;ian<na;++ian,an=an+da){
-					r[ir][ixs][ian].z=zu[ir][0];
-					r[ir][ixs][ian].x=INITIAL_T;
-					r[ir][ixs][ian].angle=an;
-					r[ir][ixs][ian].flag=0;
-				};
-			};
-		};		
-                /* compute cubic spline coefficients for uniformly sampled u 
-                u = ealloc1float(nu[ir]);
-                for (iu=0; iu<nu[ir]; ++iu)
-                        u[iu] = iu;
-                xud = (float(*)[4])ealloc1float(4*nu[ir]);
-                csplin(nu[ir],u,xu[ir],xud);
-                zud = (float(*)[4])ealloc1float(4*nu[ir]);
-                csplin(nu[ir],u,zu[ir],zud);
-
-                /* finely sample x(u) and z(u) and compute length s(u)
-                nuu = 20*nu[ir];
-                duu = (u[nu[ir]-1]-u[0])/(nuu-1);
-                s = ealloc1float(nuu);
-                s[0] = 0.0;
-                xlast = xu[ir][0];
-                zlast = zu[ir][0];
-                for (iuu=1,uu=duu; iuu<nuu; ++iuu,uu+=duu) {
-                        intcub(0,nu[ir],u,xud,1,&uu,&x);
-                        intcub(0,nu[ir],u,zud,1,&uu,&z);
-                        dx = x-xlast;
-                        dz = z-zlast;
-                        s[iuu] = s[iuu-1]+sqrt(dx*dx+dz*dz);
-                        xlast = x;
-                        zlast = z;
-                }
-
-                /* compute u(s) from s(u) 
-                ns = 1+s[nuu-1]/dsmax;
-                ds = s[nuu-1]/ns;
-                fs = 0.5*ds;
-                us = ealloc1float(ns);
-                yxtoxy(nuu,duu,0.0,s,ns,ds,fs,0.0,(float)(nu[ir]-1),us);
-
-                /* compute surface segments uniformly sampled in s 
-                ss = ealloc1(ns,sizeof(SurfaceSegment));
-                for (is=0; is<ns; ++is) {
-                        intcub(0,nu[ir],u,xud,1,&us[is],&rsx);
-                        intcub(0,nu[ir],u,zud,1,&us[is],&rsz);
-                        intcub(1,nu[ir],u,xud,1,&us[is],&rsxd);
-                        intcub(1,nu[ir],u,zud,1,&us[is],&rszd);
-                        ss[is].x = rsx;
-                        ss[is].z = rsz;
-                        ss[is].c = rsxd/sqrt(rsxd*rsxd+rszd*rszd);
-                        ss[is].s = -rszd/sqrt(rsxd*rsxd+rszd*rszd);
-                }
-
-                /* fill in surface structure 
-                rr[ir].ns = ns;
-                rr[ir].ds = ds;
-                rr[ir].ss = ss;
-
-				bnd[ixs][ian].z=840.0;
-				bnd[ixs][ian].x=INITIAL_T;
-				bnd[ixs][ian].angle=an;
-				bnd[ixs][ian].flag=0;
-
-                /* free workspace 
-                free1float(us);
-                free1float(s);
-                free1float(u);
-                free1float((float*)xud);
-                free1float((float*)zud);
-
-                /* free space replaced by surface segments 
-                free1(xu[ir]);
-                free1(zu[ir]);
-        }
-
-        /* free space replaced by surface segments 
-        free1(nu);
-        free1(xu);
-        free1(zu);
-}*/
 
 void makesurf(float dsmax,int nr,int *nu,float **xu,float **zu,
         Surface **r)
@@ -1181,7 +1071,7 @@ void ddt(float p,float q,float c,float s, float *dv,float v,float *d2t,
 	float *cuv);
 
 void raytime2d(Raytr raytr,Geo2d geo2dv,float *v,Geo2d geo2dt,float *t,
-	int npv,float *vo,float *pv,float *tv,float *cs, Boundary **bnd) 
+	int npv,float *vo,float *pv,float *tv,float *cs, Boundary ***bnd) 
 /****************************************************************************
  raytime2d - calculate traveltimes by paraxial ray tracing
 *****************************************************************************
@@ -1249,13 +1139,13 @@ Author: Zhenyue Liu, CSM 1995.
 /*		trace rays	*/
 		makeRay(geo2dv,v,vxx,vxz,vzz,raytr,a,&nrs,ray,npv,pv);
 
-		/*Checking if boundary is crossed by ray, temporary solution*/
-		for(it=1; it<nrs; ++it){
+		/*Checking if boundary is crossed by ray, temporary solution
+		for(it=0; it<nrs; ++it){
 			if(round2grid(ray[it].z,dzo) == bnd[0][ia].z){
 				bnd[0][ia].x = round2grid(ray[it].x,dxo);
 				//printf("EUREKA!\n");
 			};
-		};
+		};*/
 /*		extropolate to grids near central rays	*/
 		    v0 = ray[0].v;
 		    r2 = 0.0;
