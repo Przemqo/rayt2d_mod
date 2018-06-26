@@ -165,7 +165,7 @@ void makeRay (Geo2d geo2dv,float *v,float *vxx,float *vxz,float *vzz,
 	Raytr raytr,float a0,int *nrs,Ray *ray,int npv,float *pv);
 
 void raytime2d(Raytr raytr,Geo2d geo2dv,float *vt,Geo2d geo2dt,float *t,
-	int npv,float *vo,float *pv,float *tv,float *cs, Boundary ***bnd);
+	int npv,int ixs,int nr,float *vo,float *pv,float *tv,float *cs, Boundary ***bnd);
 
 void voint(Geo2d geo2dv,float *v,Geo2d geo2dt,float *ov2,int npv,float *vo);
 
@@ -192,7 +192,7 @@ void zcoorTopog(float fxs,float dxs,int nxs,Surface *srf,float *sz,
 
 void decodeBoundaries(int *nrPtr,int **nxzPtr,float ***xPtr,float ***zPtr);
 
-void make_boundaries(int nr,int nxs, int na,int *nu,float **xu,float **zu,
+void make_boundaries(int nr,int nxs, int na,float fa, float da,int *nu,float **xu,float **zu,
         Boundary ****r);
 
 float round2grid(float input, float factor);
@@ -205,7 +205,7 @@ main(int argc, char **argv)
 		amax,da,fat,fac,tmax,aperx,temp,fx,fz,dx,dz,ex,ez,fxt,ext,an;
 	float	*v,*vt,*t,*ov2,*pv=NULL,*pvt=NULL,*tv=NULL,*cs=NULL,*vo=NULL,
 		**xsrf,**zsrf,*szi,*nangl;
-	int	ixs,ian,ixs0,nsize,isize,ek,ms;
+	int	ixs,ixs0,nsize,isize,ek,ms;
 	Geo2d geo2dv, geo2dt;
 	Raytr raytr;
     Surface *srf;
@@ -396,7 +396,7 @@ main(int argc, char **argv)
 
 	/* Estimation of the reflecting surface 	*/
 	decodeBoundaries(&nsrf,&nxzsrf,&xsrf,&zsrf);
-	make_boundaries(nsrf,nxs,na,nxzsrf,xsrf,zsrf,&bnd);
+	make_boundaries(nsrf,nxs,na,fa,da,nxzsrf,xsrf,zsrf,&bnd);
 
 	/* Z coordinate of the source assignment, omitting source surface evaluation */
         szi = alloc1float(nxs);
@@ -452,7 +452,7 @@ main(int argc, char **argv)
 		geo2dv.nx = nxt;	geo2dv.fx = fxt;
 		
 	    /* compute traveltime by paraxial ray tracing	*/
-		raytime2d(raytr,geo2dv,vt,geo2dt,t,npv,vo,pvt,tv,cs,bnd);
+		raytime2d(raytr,geo2dv,vt,geo2dt,t,npv,ixs,nsrf,vo,pvt,tv,cs,bnd);
 
 		/*make up in shadow zones by eikonal equation	*/
 		if(ek) eiknl(geo2dt,t,ov2,tmax);
@@ -547,20 +547,22 @@ zu              array[nr][nu[ir]] of surface z coordinates z(u)
 Output:
 r               array[boundary_no][source_no][ray_no] of boundaries
 ******************************************************************************/
-void make_boundaries(int nr,int nxs,int na,int *nu,float **xu,float **zu,
+void make_boundaries(int nr,int nxs,int na,float fa,float da,int *nu,float **xu,float **zu,
         Boundary ****r)
 {
-	int ir,is,ia;
+	int ir,is,ian;
+	float fa0;
 	Boundary ***rr;
 
-	*r = rr = (Boundary ***)(ealloc3(nr,nxs,na,sizeof(Boundary)));
-	for (ir=0; ir<nr; ++ir) {
+	*r = rr = (Boundary ***)(ealloc3(na,nxs,nr,sizeof(Boundary)));
+
+	for(ian=0,fa0=fa;ian<na;++ian,fa0+=da){
 		for(is=0;is<nxs;++is){
-			for(ia=0;ia<na;++ia){	
-				rr[ir][is][ia].z=zu[ir][0];
-				rr[ir][is][ia].x=INITIAL_T;
-				rr[ir][is][ia].angle=45.0;
-				rr[ir][is][ia].flag=0;
+			for (ir=0; ir<nr; ++ir){	
+				rr[ir][is][ian].z=zu[ir][0];
+				rr[ir][is][ian].x=INITIAL_T;
+				rr[ir][is][ian].angle=fa0;
+				rr[ir][is][ian].flag=0;
 			};
 		};
 	};
@@ -1071,7 +1073,7 @@ void ddt(float p,float q,float c,float s, float *dv,float v,float *d2t,
 	float *cuv);
 
 void raytime2d(Raytr raytr,Geo2d geo2dv,float *v,Geo2d geo2dt,float *t,
-	int npv,float *vo,float *pv,float *tv,float *cs, Boundary ***bnd) 
+	int npv,int ixs,int nr,float *vo,float *pv,float *tv,float *cs, Boundary ***bnd) 
 /****************************************************************************
  raytime2d - calculate traveltimes by paraxial ray tracing
 *****************************************************************************
@@ -1100,7 +1102,7 @@ Author: Zhenyue Liu, CSM 1995.
 	Ray *ray;
 
  
- 	int i,ia,ixo,izo;
+ 	int i,ia,ixo,izo,ib;
 	float a,xo,zo,exo,ezo;
 
 /*	variables used for extrapolation	*/
@@ -1136,16 +1138,41 @@ Author: Zhenyue Liu, CSM 1995.
 /* 	loop over shooting angles at source point 	*/
 	for(ia=0,a=fa; ia<na; ++ia,a+=da){  
 	
-/*		trace rays	*/
+	/* trace rays	*/
 		makeRay(geo2dv,v,vxx,vxz,vzz,raytr,a,&nrs,ray,npv,pv);
 
-		/*Checking if boundary is crossed by ray, temporary solution
-		for(it=0; it<nrs; ++it){
-			if(round2grid(ray[it].z,dzo) == bnd[0][ia].z){
-				bnd[0][ia].x = round2grid(ray[it].x,dxo);
-				//printf("EUREKA!\n");
+		/*Checking if boundary is crossed by ray */
+		for(ib=0; ib<nr; ++ib){
+			for(it=0; it<nrs; ++it){
+
+				/* Rounding to nearest grid point */
+				if(round2grid(ray[it].z,dzo) == round2grid(bnd[ib][ixs][ia].z,dzo)){
+
+					/* If first loop, first values are closest to z */
+					if(bnd[ib][ixs][ia].x == INITIAL_T){
+							bnd[ib][ixs][ia].x = ray[it].x;
+							bnd[ib][ixs][ia].z = ray[it].z;
+					};
+
+					/* Checks if the current values are closer to boundary z than the ones from previous loops */
+					if(abs(ray[it].z - round2grid(ray[it].z,dzo)) < abs(bnd[ib][ixs][ia].z - round2grid(ray[it].z,dzo))){
+							
+							bnd[ib][ixs][ia].x = ray[it].x;
+							bnd[ib][ixs][ia].z = ray[it].z;
+	
+					};
+				};		
 			};
-		};*/
+
+			/*Rounding closest values, changing flag for encountering reflector */
+			/* But only if boundary was crossed */
+			if(bnd[ib][ixs][ia].x != INITIAL_T){
+				bnd[ib][ixs][ia].x = round2grid(bnd[ib][ixs][ia].x,dxo);
+				bnd[ib][ixs][ia].z = round2grid(bnd[ib][ixs][ia].z,dzo);
+				bnd[ib][ixs][ia].flag = 1;
+			};
+		};
+
 /*		extropolate to grids near central rays	*/
 		    v0 = ray[0].v;
 		    r2 = 0.0;
