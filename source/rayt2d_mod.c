@@ -457,10 +457,10 @@ main(int argc, char **argv)
 
 		/* Loop through all the boundary encounters and do raytracing for upgoing waves */
 		for (ir=0; ir<nsrf; ++ir){
-			fprintf(jpfp,"Layer number=%d\n",ir+1);
+			//fprintf(jpfp,"Layer number=%d\n",ir+1);
 			for(ian=0;ian<na;++ian){
 
-				fprintf(jpfp,"Ray number=%d\n",ian+1);
+				//fprintf(jpfp,"Ray number=%d\n",ian+1);
 
 				/* Switch geometry for upgoing ray	*/
 				/* If there was crossing of ray */
@@ -1092,9 +1092,7 @@ Author: Zhenyue Liu, CSM 1995.
 
 							/* If first loop, first values are closest to z */
 							if(bnd[ib][ixs][ia].x == INITIAL_T){
-									printf("First encounter!\n");
-									printf("X %f\n",ray[it].x);
-									printf("Z %f\n",ray[it].z);
+
 									bnd[ib][ixs][ia].x = ray[it].x;
 									bnd[ib][ixs][ia].z = ray[it].z;
 							}
@@ -1102,10 +1100,6 @@ Author: Zhenyue Liu, CSM 1995.
 							/* Checks if the current values are closer to boundary z than the ones from previous loops */
 							if(abs(ray[it].z - round2grid(ray[it].z,dzo)) < abs(bnd[ib][ixs][ia].z - round2grid(ray[it].z,dzo))){
 
-
-									printf("Another encounter!\n");
-									printf("X %f\n",ray[it].x);
-									printf("Z %f\n",ray[it].z);
 									bnd[ib][ixs][ia].x = ray[it].x;
 									bnd[ib][ixs][ia].z = ray[it].z;
 	
@@ -1134,7 +1128,6 @@ Author: Zhenyue Liu, CSM 1995.
 			  					bnd[ib][ixs][ia].t = MAX(0.0,bnd[ib][ixs][ia].t);
 								if(bnd[ib][ixs][ia].t < 999) bnd[ib][ixs][ia].t = sqrt(bnd[ib][ixs][ia].t);
 								
-								printf("Downgoing time %f\n",bnd[ib][ixs][ia].t);
 							}
  						}
 					}
@@ -1148,15 +1141,13 @@ Author: Zhenyue Liu, CSM 1995.
 
 				for(it=0; it<nrs; ++it){
 					if(round2grid(ray[it].z,dzo) == fzo){
+						
 						/* If this is 1st time it reached surf */
 						if (closest_z == INITIAL_T){
 
 							/* Save all parameters */
 							closest_z = ray[it].z;
 							closest_x = ray[it].x;
-							printf("Found the 1st surf reach!\n");
-							printf("X %f\n",closest_x);
-							printf("Z %f\n",closest_z);
 
 						}
 						else {
@@ -1165,46 +1156,42 @@ Author: Zhenyue Liu, CSM 1995.
 							if(abs(ray[it].z - fzo) < abs(closest_z - fzo))
 								closest_z = ray[it].z;
 								closest_x = ray[it].x;
-								printf("Found another surf reach!\n");
-								printf("X %f\n",closest_x);
-								printf("Z %f\n",closest_z);
 						}
 					}
 
 				
 				}
 
-				/* Overwrite downgoing times with sum of down- and up-going 
+				/* Overwrite downgoing times with sum of down- and up-going */
+				/*If we already found surface hit */
 				if (closest_z != INITIAL_T){
-					bnd[ir][ixs][ian].x =  closest_x;
-					bnd[ir][ixs][ian].z =  closest_z;
-
+					/*X and Z of the ray hit */
+					bnd[ir][ixs][ian].x =  round2grid(closest_x,dxo);
+					bnd[ir][ixs][ian].z =  round2grid(closest_z,dzo);
+					/*Loop through all time field to get t value for x,z */
 					for (ixo=0; ixo<nxo; ++ixo){
 						xo = fxo+ixo*dxo;
 						i = ixo*nzo;
 						for (izo=0; izo<nzo; ++izo){
 							zo = fzo+izo*dzo;
 							if(bnd[ir][ixs][ian].x == xo && bnd[ir][ixs][ian].z == zo){
-								printf("Gotcha!\n");
-								printf("X %f\n",xo);
-								printf("Z %f\n",zo);
-								
+								/* Restrictions from orignal code, repeated i am afraid */
+								if(t[i+izo] > 0.0 && t[i+izo] < 999){
+
+									//printf("Time for down %f\n",bnd[ir][ixs][ian].t);
+									//printf("Time for up %f\n",sqrt(t[i+izo]));
+									/*Overwrite of down time with 2WT */
+									bnd[ir][ixs][ian].t += sqrt(t[i+izo]); //!
+								}
 							}
 						}
 					}
-					
-					printf("Time for down %f\n",bnd[ir][ixs][ian].t);
-					bnd[ir][ixs][ian].t += closest_t;
-					printf("Time for up %f\n",bnd[ir][ixs][ian].t);
-					printf("Final Z %f\n",bnd[ir][ixs][ian].z);
-					printf("Final X %f\n",bnd[ir][ixs][ian].x);
-					printf("Flag %d\n",bnd[ir][ixs][ian].flag);
-					
-				}*/
-				
-				
 
-				
+					//printf("Final Z %f\n",bnd[ir][ixs][ian].z);
+					//printf("Final X %f\n",bnd[ir][ixs][ian].x);
+					//printf("Final Time %f\n",bnd[ir][ixs][ian].t);	
+
+				}
 				break;
 			
 			default:

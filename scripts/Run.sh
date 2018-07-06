@@ -34,12 +34,12 @@ fx=0          	#first lateral sample in velocity
 nx=251        	#number of lateral samples in velocity           
 dx=20         	#lateral interval in velocity    
 
-nxs=1  	#Number of sources      &
-fzs=500           #Depth of the sources fzs=$fzs
+nxs=1  			#Number of sources      &
+fzs=500         #Depth of the sources fzs=$fzs
 fxs=2000        #Coordinate of first source fxs=$fxs
 
-fa=30     #First take-off angle
-na=1	#Number of rays
+fa=30   		#First take-off angle
+na=11			#Number of rays
 #da=2           #Increment of take-off angle fa=$fa na=$na da=$da
 
 
