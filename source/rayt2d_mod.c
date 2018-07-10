@@ -36,7 +36,7 @@ char *sdoc[] = {
 " nxo=nx		number of lateral samples in traveltime table	",
 " dxo=dx		lateral interval in traveltime table		",
 "									",
-" surf=\"0,0;99999,0\"  reflecting surface \"x1,z1;x2,z2;x3,z3;...\"	",
+" refl=\"0,0;99999,0\"  reflecting surface \"x1,z1;x2,z2\"	",
 " fxs=fx		x-coordinate of first source			",
 " fzs=0			z-coordinate of the source/sources			",
 " nxs=1			number of sources				",
@@ -59,6 +59,7 @@ char *sdoc[] = {
 " tvfile=tvfile		output file of traveltime variation tables  	",
 "			tv[nxs][nxo][nzo]				",
 " csfile=csfile		output file of cosine tables cs[nxs][nxo][nzo]	",
+" rtfile=rtfile.txt		output file for reflection traveltimes	",
 "									",
 " Notes:								",
 " 1. Each traveltime table is calculated by paraxial ray tracing; then 	",
@@ -139,20 +140,6 @@ typedef struct Geo2DStruct {
 	float odz;		/* 1 over dz   */	 
 }Geo2d;
 
-/* Geometry of the recording surface */
-typedef struct SurfaceSegmentStruct {
-        float x;        /* x coordinate of segment midpoint */
-        float z;        /* z coordinate of segment midpoint */
-        float s;        /* x component of unit-normal-vector */
-        float c;        /* z component of unit-normal-vector */
-} SurfaceSegment;
-
-typedef struct SurfaceStruct {
-        int ns;               /* number of surface segments */
-        float ds;             /* segment length */
-        SurfaceSegment *ss;   /* array[ns] of surface segments */
-} Surface;
-
 typedef struct ReflectingBoundary {
 	float x,z;			/* X,Z for ray to encounter */
 	float t;            /* Time it took ray to reach from source */
@@ -181,14 +168,7 @@ void vel2Interp(Geo2d geo2dv,float *v,float *vxx,float *vxz,float *vzz,
 
 void vintp(Geo2d geo2dv,float *v,float x,float z,float *u);
 
-void decodeSurfaces(int *nrPtr,int **nxzPtr,float ***xPtr,float ***zPtr);
-
 int decodeSurface(char *string,int *nxzPtr,float **xPtr,float **zPtr);
-
-void makesurf(float dsmax,int nr,int *nu,float **xu,float **zu,
-             Surface **r);
-void zcoorTopog(float fxs,float dxs,int nxs,Surface *srf,float *sz,
-                float *nangl);
 
 void decodeBoundaries(int *nrPtr,int **nxzPtr,float ***xPtr,float ***zPtr);
 
@@ -210,11 +190,11 @@ main(int argc, char **argv)
 
 	Geo2d geo2dv, geo2dt;
 	Raytr raytr;
-    Surface *srf;
 	Boundary ***bnd;
-	char *vfile="stdin",*tfile="stdout",*jpfile,*pvfile,*tvfile,*csfile;
+	
+	char *vfile="stdin",*tfile="stdout",*jpfile,*pvfile,*tvfile,*csfile,*rtfile;
 	char *restart;
-	FILE *vfp, *tfp, *jpfp, *pvfp=NULL, *tvfp=NULL, *csfp=NULL;
+	FILE *vfp, *tfp, *jpfp, *pvfp=NULL, *tvfp=NULL, *csfp=NULL, *rtfp;
 
 	/*hook up getpar to handle the parameters	*/
 	initargs(argc,argv);
@@ -331,7 +311,13 @@ main(int argc, char **argv)
 	    csfp = fopen(csfile,"w");
 	}
 
-        checkpars();
+	/* Reflections 2WT*/
+	if( !getparstring("rtfile",&rtfile)) 
+		rtfile = "rtfile.txt";
+	rtfp = fopen(rtfile,"w");
+
+
+    checkpars();
 
 	fprintf(jpfp,"\n");
 	fprintf(jpfp," RAYT2D parameters\n");
@@ -352,6 +338,7 @@ main(int argc, char **argv)
 	if(npv)
  	  	fprintf(jpfp," pvfile=%s tvfile=%s csfile=%s\n",
 			pvfile,tvfile,csfile);
+	fprintf(jpfp," rtfile=%s\n",rtfile);
 	fflush(jpfp);
 
 	/* ensure sources and output are in velocity grid	*/
@@ -502,12 +489,29 @@ main(int argc, char **argv)
 		}
 		free1float(vt);
 		if(npv) free1float(pvt);
+
+		/* Write reflection times from boundaries */
+		fprintf(rtfp,"Source %d X=%f\n",ixs+1,xs);
+		for (ir=0; ir<nsrf; ++ir){
+			fprintf(rtfp,"Reflector %d\n",ir+1);
+			fprintf(rtfp,"X   Z   T\n");
+			for(ian=0;ian<na;++ian){
+				if (bnd[ir][ixs][ian].flag == 1){
+					fprintf(rtfp,"%f %f %f\n",\
+					bnd[ir][ixs][ian].x,\
+					bnd[ir][ixs][ian].z,\
+					bnd[ir][ixs][ian].t);
+				}
+			}
+		}
 	}
+
  	fprintf(jpfp," finish program rayt2d\n\n");
 	
 	fclose(tfp);
 	fclose(vfp);
 	fclose(jpfp);
+	fclose(rtfp);
 	
 	free1float(v);
 	free1float(t);
@@ -587,7 +591,7 @@ void make_boundaries(int nr,int nxs,int na,float fa,float da,int *nu,float **xu,
 	float fa0;
 	Boundary ***rr;
 
-	*r = rr = (Boundary ***)(ealloc3(na,nxs,nr,sizeof(Boundary)));
+	*r = rr = (Boundary ***) (ealloc3(na,nxs,nr,sizeof(Boundary)));
 
 	for(ian=0,fa0=fa;ian<na;++ian,fa0+=da){
 		for(is=0;is<nxs;++is){
