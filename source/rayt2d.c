@@ -8,8 +8,7 @@
 /*********************** self documentation **********************/
 char *sdoc[] = {
 "									",
-" RAYT2D_mod - traveltime Tables calculated by 2D paraxial RAY tracing	",
-" With shot positions at arbitrary depth	",
+" RAYT2D - traveltime Tables calculated by 2D paraxial RAY tracing	",
 "									",
 "     rayt2d vfile= tfile= [optional parameters]			",
 "									",
@@ -36,9 +35,8 @@ char *sdoc[] = {
 " nxo=nx		number of lateral samples in traveltime table	",
 " dxo=dx		lateral interval in traveltime table		",
 "									",
-" refl=			reflecting surface \"x1,z1;x2,z2...\"	",
+" surf=\"0,0;99999,0\"  Recording surface \"x1,z1;x2,z2;x3,z3;...\"	",
 " fxs=fx		x-coordinate of first source			",
-" fzs=0			z-coordinate of the source/sources			",
 " nxs=1			number of sources				",
 " dxs=2*dxo		x-coordinate increment of sources		",
 " aperx=0.5*nx*dx  	ray tracing aperature in x-direction		",
@@ -59,7 +57,6 @@ char *sdoc[] = {
 " tvfile=tvfile		output file of traveltime variation tables  	",
 "			tv[nxs][nxo][nzo]				",
 " csfile=csfile		output file of cosine tables cs[nxs][nxo][nzo]	",
-" rtfile=rtfile.txt		output file for reflection traveltimes	",
 "									",
 " Notes:								",
 " 1. Each traveltime table is calculated by paraxial ray tracing; then 	",
@@ -138,7 +135,7 @@ typedef struct Geo2DStruct {
 	float fz;		/* first depth sample  */	 
 	float dz;		/* depth interval  */	
 	float odz;		/* 1 over dz   */	 
-} Geo2d;
+}Geo2d;
 
 /* Geometry of the recording surface */
 typedef struct SurfaceSegmentStruct {
@@ -154,20 +151,12 @@ typedef struct SurfaceStruct {
         SurfaceSegment *ss;   /* array[ns] of surface segments */
 } Surface;
 
-typedef struct ReflectingBoundary {
-	float x,z;			/* X,Z for ray to encounter */
-	float t;            /* Time it took ray to reach from source */
-	float angle;		/* Angle of incidence for ray */
-	int flag;			/* Flag,0 initial,1 after hitting boundary,2 after done with down,3 all done*/
-} Boundary;
-
 /* Prototypes of functions used internally */
 void makeRay (Geo2d geo2dv,float *v,float *vxx,float *vxz,float *vzz,
 	Raytr raytr,float a0,int *nrs,Ray *ray,int npv,float *pv);
 
 void raytime2d(Raytr raytr,Geo2d geo2dv,float *vt,Geo2d geo2dt,float *t,
-	int npv,int ixs,int ir, int ian,int nr,float *vo,float *pv,float *tv,float *cs,
-	float *ref_x, float **ref_z, Boundary ***bnd,int dir);
+	int npv,float *vo,float *pv,float *tv,float *cs);
 
 void voint(Geo2d geo2dv,float *v,Geo2d geo2dt,float *ov2,int npv,float *vo);
 
@@ -183,40 +172,31 @@ void vel2Interp(Geo2d geo2dv,float *v,float *vxx,float *vxz,float *vzz,
 
 void vintp(Geo2d geo2dv,float *v,float x,float z,float *u);
 
+void decodeSurfaces(int *nrPtr,int **nxzPtr,float ***xPtr,float ***zPtr);
+
 int decodeSurface(char *string,int *nxzPtr,float **xPtr,float **zPtr);
 
 void makesurf(float dsmax,int nr,int *nu,float **xu,float **zu,
              Surface **r);
+void zcoorTopog(float fxs,float dxs,int nxs,Surface *srf,float *sz,
+                float *nangl);
 
-void zcoorRef(float fxs,float dxs,int nxs,int nr,Surface *srf,float **sz,
-                float **nangl);
-
-void decodeRef(int *nrPtr,int **nxzPtr,float ***xPtr,float ***zPtr);
-
-void make_ref_struct(int nr,int nxs,int na,int nx,float fa,float da,
-        Boundary ****r);
-
-float round2grid(float input, float factor);
 
 int
 main(int argc, char **argv)
 {
-	int	na,nat,nt,nxs,nxo,nzo,nx,nz,nxt,nx0,mx,npv,nsrf,*nxzsrf,dir;	
-	float	dt,xs,fxs,fzs,dxs,exs,fxo,fzo,dxo,dzo,exo,ezo,fa,ea,amin,	
-		amax,da,fat,fac,tmax,aperx,temp,fx,fz,dx,dz,ex,ez,fxt,ext,an;
-	float	*v,*vt,*t,*t_down,*ov2,*pv=NULL,*pvt=NULL,*tv=NULL,*cs=NULL,*vo=NULL,
-		**xsrf,**zsrf,*szi,*ref_x,**ref_z, **nangl;
-	int	ix,ixs,ixs0,nsize,isize,ek,ms,ir,ian,ixo,izo,i,cb=INITIAL_T;
-	int ib=INITIAL_T,ia=INITIAL_T,nangl_x;
-
+	int	na,nat,nt,nxs,nxo,nzo,nx,nz,nxt,nx0,mx,npv,nsrf,*nxzsrf;
+	float	dt,xs,fxs,dxs,exs,fxo,fzo,dxo,dzo,exo,ezo,fa,ea,amin,eat,
+		amax,da,fat,fac,tmax,aperx,temp,fx,fz,dx,dz,ex,ez,fxt,ext;
+	float	*v,*vt,*t,*ov2,*pv=NULL,*pvt=NULL,*tv=NULL,*cs=NULL,*vo=NULL,
+		**xsrf,**zsrf,*szi,*nangl;
+	int	ixs,ixs0,nsize,isize,ek,ms;
 	Geo2d geo2dv, geo2dt;
 	Raytr raytr;
-	Boundary ***bnd;
-	Surface *srf;
-
-	char *vfile="stdin",*tfile="stdout",*jpfile,*pvfile,*tvfile,*csfile,*rtfile;
+        Surface *srf;
+	char *vfile="stdin",*tfile="stdout",*jpfile,*pvfile,*tvfile,*csfile;
 	char *restart;
-	FILE *vfp, *tfp, *jpfp, *pvfp=NULL, *tvfp=NULL, *csfp=NULL, *rtfp;
+	FILE *vfp, *tfp, *jpfp, *pvfp=NULL, *tvfp=NULL, *csfp=NULL;
 
 	/*hook up getpar to handle the parameters	*/
 	initargs(argc,argv);
@@ -257,7 +237,6 @@ main(int argc, char **argv)
 
 	if(!getparint("nxs",&nxs)) nxs = 1;
 	if(!getparfloat("fxs",&fxs)) fxs = fx;
-	if(!getparfloat("fzs",&fzs)) fzs = 0.; 		//New
 	if(!getparfloat("dxs",&dxs)) dxs = 2*dxo;
 	exs = fxs+(nxs-1)*dxs;
 	if( !getparfloat("aperx",&aperx)) aperx = 0.5*(ex-fx);
@@ -277,7 +256,7 @@ main(int argc, char **argv)
 	err("amin and amx must be within 0 to 180 degrees!\n");
 	fa *= PI/180;
 	da *= PI/180;
-	ea = fa+(na-1)*da; //last angle
+	ea = fa+(na-1)*da;
 	amin *= PI/180;
 	amax *= PI/180;
 	if(!getparfloat("fac",&fac)) fac = 0.01;
@@ -333,13 +312,7 @@ main(int argc, char **argv)
 	    csfp = fopen(csfile,"w");
 	}
 
-	/* Reflections 2WT*/
-	if( !getparstring("rtfile",&rtfile)) 
-		rtfile = "rtfile.txt";
-	rtfp = fopen(rtfile,"w");
-
-
-    checkpars();
+        checkpars();
 
 	fprintf(jpfp,"\n");
 	fprintf(jpfp," RAYT2D parameters\n");
@@ -352,7 +325,6 @@ main(int argc, char **argv)
 	fprintf(jpfp," nzo=%d fzo=%g dzo=%g\n",nzo,fzo,dzo);
 	fprintf(jpfp," nxo=%d fxo=%g dxo=%g\n",nxo,fxo,dxo);
  	fprintf(jpfp," nxs=%d fxs=%g dxs=%g\n",nxs,fxs,dxs);
-	fprintf(jpfp," fzs=%g",fzs);
  	fprintf(jpfp," mx=%d aperx=%g \n",mx,aperx);
  	fprintf(jpfp," na=%d fa=%g da=%g\n",na,fa*180/PI,da*180/PI);
  	fprintf(jpfp," amin=%g amax=%g \n",amin*180/PI,amax*180/PI);
@@ -360,7 +332,6 @@ main(int argc, char **argv)
 	if(npv)
  	  	fprintf(jpfp," pvfile=%s tvfile=%s csfile=%s\n",
 			pvfile,tvfile,csfile);
-	fprintf(jpfp," rtfile=%s\n",rtfile);
 	fflush(jpfp);
 
 	/* ensure sources and output are in velocity grid	*/
@@ -381,15 +352,13 @@ main(int argc, char **argv)
 	v = alloc1float(nx*nz);
 	ov2 = alloc1float(nxo*nzo);
 	t = alloc1float(nxo*nzo);
-	t_down = alloc1float(nxo*nzo);
-
 	if(npv) {
 		pv = alloc1float(nx*nz);
 		tv = alloc1float(nxo*nzo);
 		vo = alloc1float(nxo*nzo);
 		cs = alloc1float(nxo*nzo);
 	}
-	
+
 	/* read velocity */
 	if(fread(v,sizeof(float),nx*nz,vfp)!=nx*nz)
 	    err("cannot read %d velocities from file %s",nx*nz,vfp);
@@ -407,38 +376,17 @@ main(int argc, char **argv)
 	fprintf(jpfp," begin traveltime calculation\n");
 	fflush(jpfp);
 
-	/* Read reflectors info from inpur parameters */
-	decodeRef(&nsrf,&nxzsrf,&xsrf,&zsrf);
+	/* Estimation of the recording surface 	*/
+	decodeSurfaces(&nsrf,&nxzsrf,&xsrf,&zsrf);
+        makesurf(dxs*0.025,nsrf,nxzsrf,xsrf,zsrf,&srf);
 
-	/*Make struct holding reflectors info for rays tracking */
-	make_ref_struct(nsrf,nxs,na,nx,fa,da,&bnd);
-
-	/*Make surfaces of reflectors for x,z determination */
-	makesurf(dxs*0.025,nsrf,nxzsrf,xsrf,zsrf,&srf);
-
-	/*Data structures for x,z,angle of dip of each reflector segment */
-	ref_x = alloc1float(nxo);
-	for(ix=0;ix < nxo;ix++) ref_x[ix]=ix*dx+fx;
-	ref_z = (float **) ealloc2(nx,nsrf,sizeof(float));
-	nangl = (float **) ealloc2(nx,nsrf,sizeof(float));
-
-	/*Fill up ref_z and nangl arrays */
-	zcoorRef(fx,dx,nx,nsrf,srf,ref_z,nangl);
-
-	/*Setting flag for down- or up-going rays */
-	/* 0 for down, 1 for up going */
-	dir = 0;
-
-	/* Z coordinate of the source assignment */
-        szi = alloc1float(nxs);
-		for(ixs=0;ixs<nxs;ixs++)
-		{
-			szi[ixs] = fzs;
-		}
-
+    szi = alloc1float(nxs);
+	nangl = ealloc1float(nxs);
+    zcoorTopog(fxs,dxs,nxs,srf,szi,nangl);
 
 	/* loop over sources */
 	for(ixs=ixs0,xs=fxs+ixs0*dxs;ixs<nxs;ixs++,xs+=dxs){
+		/* redefine the velocity model due to aperture	*/
 		temp = fxo;
 		if(xs<temp) temp = xs;
 		if(xs-aperx>temp) temp = xs-aperx;
@@ -453,67 +401,37 @@ main(int argc, char **argv)
 		vt = alloc1float(nxt*nz);
 		if(npv) pvt = alloc1float(nxt*nz);
 
-	    /* reducing velocity volume due to aperture	*/
+	        /* reducing velocity volume due to aperture	*/
 		trans(nx,nz,nxt,nx0,v,vt);
 		if(npv) trans(nx,nz,nxt,nx0,pv,pvt);
 
 		/* determine range of take-off angles	*/
-		/*Heavily reduced, we will shot in all directions*/
-		fat = fa ;
-		nat = na ;
+		fat = fa + nangl[ixs];
+		eat = ea + nangl[ixs];
+		nat = na;
+		if (fat<-(PI/2)) fat = -PI/2;
+		if (eat>(PI/2)) eat = PI/2;
+		if(xs==fxt && fat<0) {
+			fat = 0.;
+			nat = eat/da+1.5;
+		} else if(xs==ext && eat>0)
+			nat = 1.5-fa/da;
 
-
+		printf("%f\n0",szi[ixs]);
+		
 		/* update geometry information	*/
 		raytr.xs = xs;		raytr.zs = szi[ixs];
 		raytr.na = nat;		raytr.fa = fat;		
 		geo2dv.nx = nxt;	geo2dv.fx = fxt;
 		
-	    /* compute traveltime by paraxial ray tracing	*/
-		raytime2d(raytr,geo2dv,vt,geo2dt,t,npv,ixs,ib,ia,nsrf,vo,pvt,tv,cs,ref_x,ref_z,bnd,dir);
+	        /* compute traveltime by paraxial ray tracing	*/
+		raytime2d(raytr,geo2dv,vt,geo2dt,t,npv,vo,pvt,tv,cs);
 
-		/* Let's make a copy of a downgoing traveltimes, nice to have around */
-		for(ixo=0; ixo<nxo; ++ixo) 
-		for(izo=0; izo<nzo; ++izo){
-			i = izo+ixo*nzo;
-			t_down[i] = t[i]; //t_down is copy
-		};
-
-		/* Loop through all the boundary encounters and do raytracing for upgoing waves */
-		for (ir=0; ir<nsrf; ++ir){
-
-			for(ian=0;ian<na;++ian){
-
-
-				/* Switch geometry for upgoing ray	*/
-				/* If there was crossing of ray */
-				if (bnd[ir][ixs][ian].flag == 2){
-
-					raytr.xs = bnd[ir][ixs][ian].x;		
-					raytr.zs = bnd[ir][ixs][ian].z;
-					raytr.na = 1;
-					nangl_x = round2grid(raytr.xs,dx);
-
-					//Calculating angle to shot from reflector to surface (make sure signs are ok)					
-					 if (bnd[ir][ixs][ian].angle > 0) raytr.fa =  (PI / 2) + bnd[ir][ixs][ian].angle + nangl[ir][nangl_x];
-					 if	(bnd[ir][ixs][ian].angle < 0) raytr.fa = -(PI / 2) + bnd[ir][ixs][ian].angle + nangl[ir][nangl_x];
-
-					dir = 1;
-					
-					//I need to put rayt2d here, but hide a lot behind flag check
-					raytime2d(raytr,geo2dv,vt,geo2dt,t,npv,ixs,ir,ian,nsrf,vo,pvt,tv,cs,ref_x,ref_z,bnd,dir);
-
-					dir = 0;
-				};	
-			};	
-		};
-		
-
-	
 		/*make up in shadow zones by eikonal equation	*/
-		if(ek) eiknl(geo2dt,t_down,ov2,tmax);
+		if(ek) eiknl(geo2dt,t,ov2,tmax);
 	
-		/*write traveltime, downgoing field	*/
-		fwrite(t_down,sizeof(float),nxo*nzo,tfp);
+		/*write traveltime	*/
+		fwrite(t,sizeof(float),nxo*nzo,tfp);
 
 		/*write quantities for velocity analysis	*/
 		if(npv) {
@@ -527,77 +445,63 @@ main(int argc, char **argv)
 		}
 		free1float(vt);
 		if(npv) free1float(pvt);
-
-		/* Write reflection times from boundaries */
-		fprintf(rtfp,"Source %d X=%f\n",ixs+1,xs);
-		for (ir=0; ir<nsrf; ++ir){
-			fprintf(rtfp,"Reflector %d\n",ir+1);
-			fprintf(rtfp,"X   Z   T\n");
-			for(ian=0;ian<na;++ian){
-				if (bnd[ir][ixs][ian].flag == 3){
-					fprintf(rtfp,"%f %f %f\n",\
-					bnd[ir][ixs][ian].x,\
-					bnd[ir][ixs][ian].z,\
-					bnd[ir][ixs][ian].t);
-				}
-			}
-		}
 	}
-
  	fprintf(jpfp," finish program rayt2d\n\n");
 	
 	fclose(tfp);
 	fclose(vfp);
 	fclose(jpfp);
-	fclose(rtfp);
 	
 	free1float(v);
 	free1float(t);
-	free1float(t_down);
-
 	if(npv){
 		free1float(pv);
 		free1float(tv);
 		free1float(cs);
 	}
 
-	/*Freeing boundary*/
-	free1(bnd);
-
 	return(CWP_Exit());
 }
 
-void decodeRef(int *nrPtr,int **nxzPtr,float ***xPtr,float ***zPtr)
+/**********************************************************************
+        Subroutines adapted from Dave Hale's modeling library
+
+        decodeReflectors
+        decodeReflector
+        makeref                 Autor: Dave Hale, CSM, 09/17/91
+**********************************************************************/
+
+void decodeSurfaces(int *nrPtr,int **nxzPtr,float ***xPtr,float ***zPtr)
 /*************************************************************************
-decodeRef - parse reflectors info from input parameters
+decodeSurfaces - parse surfaces parameter string
 **************************************************************************
 Output:
-nrPtr           pointer to nr an int specifying number of reflectors = 2
+nrPtr           pointer to nr an int specifying number of surfaces = 2
 nxzPtr          pointer to nxz specifying number of (x,z) pairs defining the
-                reflectors
-xPtr            pointer to array[x][nr] of x values for each reflector
-zPtr            array[z][nr] of z values for each reflector
+                surfaces
+xPtr            pointer to array[x][nr] of x values for each surface
+zPtr            array[z][nr] of z values for each surface
 **************************************************************************/
 {
         int nr,*nxz,ir;
         float **x,**z;
-		char t[6144],*s;
+	char t[6144],*s;
 
         /* count surfaces */
-        nr = countparname("refl");
-        if (nr==0) return;
+        nr = countparname("surf");
+        if (nr==0) nr = 1;
 
         /* allocate space */
         nxz = ealloc1(nr,sizeof(int));
         x = ealloc1(nr,sizeof(float*));
         z = ealloc1(nr,sizeof(float*));
 
-        /* get reflector */
+        /* get surfaces */
         for (ir=0; ir<nr; ++ir) {
-                if (!getnparstring(ir+1,"refl",&s)) s = "0,0;99999,0";
+                if (!getnparstring(ir+1,"surf",&s)) s = "0,0;99999,0";
                 strcpy(t,s);
                 if (!decodeSurface(t,&nxz[ir],&x[ir],&z[ir]))
-                        err("Reflector number %d specified "
+                        err("Surface number %d specified "
                                 "incorrectly!\n",ir+1);
         }
 
@@ -608,43 +512,7 @@ zPtr            array[z][nr] of z values for each reflector
         *zPtr = z;
 }
 
-/*****************************************************************************
-Make array of structs holding reflector info for each boundary,source,angle
-******************************************************************************
-Input:
-nr              number of reflectors = 1
-nxs				number of sources = 1
-na				number of rays	= 61
-nx				number of horizontal samples in vel field
-fa				first ray angle = -60
-da				angle increment = 2
-
-Output:
-r               array[boundary_no][source_no][ray_no] of reflector parameters
-******************************************************************************/
-void make_ref_struct(int nr,int nxs,int na,int nx,float fa,float da,
-        Boundary ****r)
-{
-	int ir,is,ian;
-	float fa0;
-	Boundary ***rr;
-
-	*r = rr = (Boundary ***) (ealloc3(na,nxs,nr,sizeof(Boundary)));
-
-	for(ian=0,fa0=fa;ian<na;++ian,fa0+=da){
-		for(is=0;is<nxs;++is){
-			for (ir=0; ir<nr; ++ir){
-				rr[ir][is][ian].z=INITIAL_T;
-				rr[ir][is][ian].x=INITIAL_T;
-				rr[ir][is][ian].angle=fa0;
-				rr[ir][is][ian].flag=0;
-			};
-		};
-	};
-
-}
-
-
+/* parse one surface specification; return 1 if valid, 0 otherwise */
 
 int decodeSurface (char *string,int *nxzPtr, float **xPtr, float **zPtr)
 /**************************************************************************
@@ -695,7 +563,6 @@ zPtr            array of z values for one surface
         *xPtr = x;
         *zPtr = z;
         return 1;
-
 }
 
 void makesurf(float dsmax,int nr,int *nu,float **xu,float **zu,
@@ -788,81 +655,80 @@ they are only used to construct the surfaces.
                 free1float((float*)xud);
                 free1float((float*)zud);
 
+                /* free space replaced by surface segments */
+                free1(xu[ir]);
+                free1(zu[ir]);
         }
+
+        /* free space replaced by surface segments */
+        free1(nu);
+        free1(xu);
+        free1(zu);
 }
 
-/* Estimation of the Z coordinate of the reflectors and its normal vector */
-  void zcoorRef(float fxs,float dxs,int nxs,int nr,Surface *srf,float **sz,
-		  float **nangl)
+/* Estimation of the Z coordinate of the topography and its normal vector */
+  void zcoorTopog(float fxs,float dxs,int nxs,Surface *srf,float *sz,
+		  float *nangl)
 /*****************************************************************************
-From the cubic spline calculation, the Z coor. of the reflectors are estimated
+From the cubic spline calculation, the Z coor. of the surface are estimated
 ******************************************************************************
 Input:
-fx              x-coordinate of the first x-coordinate 
-dxs             x-coordinate increment of grid
-nxs             number of x-direction samples
-nr				number of reflectors
+fxs             x-coordinate of the first shot (travel-time tables)
+dxs             x-coordinate increment of shots (travel-time tables)
+nxs             number of shots (travel-time tables)
 srf             surface structure
 
 Output:
-sz     z[reflector][] coordinates of the current surface (shot positions)
-nangl  nangl[reflector][] array of angles that the normal form with the vertical
+sz              z[] coordinates of the current surface (shot positions)
+nangl           array of angles that the normal form with the vertical
 *****************************************************************************
 Author: Trino Salinas, CSM, 1996.
 *****************************************************************************/
 {
-        int   ik,jx,ns,ixi,is,ix,iw;
+        int   ik,jx,ns,ixi,is,ix;
         float x,ax,ax0,az,temp;
         float *ssx,*ssz,*sss;
         SurfaceSegment *ss;
 
-		
-		for(is=0;is<nr;++is){
-			ns = srf[is].ns;
-        	ss = srf[is].ss;
+        ns = srf[0].ns;
+        ss = srf[0].ss;
+        ssx = alloc1float(ns);
+        ssz = alloc1float(ns);
+        sss = alloc1float(ns);
 
-			ssx = alloc1float(ns);
-       		ssz = alloc1float(ns);
-       		sss = alloc1float(ns);
-			
-        	
-        	 /* number of segments, segment length */
-        	for (jx=0; jx<ns ; jx++) {
-            	ssx[jx] = ss[jx].x;
-            	ssz[jx] = ss[jx].z;
-            	sss[jx] = ss[jx].s;
-        	}
+        /* number of segments, segment length */
+        for (jx=0; jx<ns ; jx++) {
+            ssx[jx] = ss[jx].x;
+            ssz[jx] = ss[jx].z;
+            sss[jx] = ss[jx].s;
+        }
+        ixi = 0;
+        for (ix=0; ix<nxs; ++ix) {
+            x = fxs + ix*dxs;
+            for (ik=ixi; ik<ns-1; ++ik) {
+                if (ssx[ik]<=x && ssx[ik+1]>=x) {
+                   az = ssz[ik] - ssz[ik+1];
+                   ax0 = ssx[ik+1] - x;
+                   ax = ssx[ik+1] - ssx[ik];
+                   sz[ix] = ax0*az/ax+ssz[ik+1];
+                   az = sss[ik] - sss[ik+1];
+                   temp = ax0*az/ax + sss[ik+1];
+                   nangl[ix] = asin(temp);
+                   ixi = ik;
+                }
+            }
+        }
+        sz[0] = 2*sz[1] - sz[2];
+        nangl[0] = 2*nangl[1] - nangl[2];
+        sz[nxs-1] = 2*sz[nxs-2] - sz[nxs-3];
+        nangl[nxs-1] = 2*nangl[nxs-2] - nangl[nxs-3];
 
-        	ixi = 0;
-        	for (ix=0; ix<nxs; ++ix) {
-            	x = fxs + ix*dxs;
-            	for (ik=ixi; ik<ns-1; ++ik) {
-                	if (ssx[ik]<=x && ssx[ik+1]>=x) {
-                   		az = ssz[ik] - ssz[ik+1];
-                   		ax0 = ssx[ik+1] - x;
-                   		ax = ssx[ik+1] - ssx[ik];
-                   		sz[is][ix] = ax0*az/ax+ssz[ik+1];
-                   		az = sss[ik] - sss[ik+1];
-                   		temp = ax0*az/ax + sss[ik+1];
-                   		nangl[is][ix] = asin(temp);
-                   		ixi = ik;
-                	}
-            	}
-        	}
-			
-        	sz[is][0] = 2*sz[is][1] - sz[is][2];
-        	nangl[is][0] = 2*nangl[is][1] - nangl[is][2];
-        	sz[is][nxs-1] = 2*sz[is][nxs-2] - sz[is][nxs-3];
-        	nangl[is][nxs-1] = 2*nangl[is][nxs-2] - nangl[is][nxs-3];
+         for(is=0;is<nxs;is++)
+           warn("sz[%d]=%g,nangl[%d]=%g",is,sz[is],is,nangl[is]);
 
-         	//for(iw=0;iw<nxs;iw++)
-           		//warn("sz[%d][%d]=%g,nangl[%d][%d]=%g",is,iw,sz[is][iw],is,iw,nangl[is][iw]);
-        	
-		free1float(ssx);
+        free1float(ssx);
         free1float(ssz);
         free1float(sss);
-		}
-		
 }
 
 /* Prototypes of functions used interally */
@@ -1101,8 +967,7 @@ void ddt(float p,float q,float c,float s, float *dv,float v,float *d2t,
 	float *cuv);
 
 void raytime2d(Raytr raytr,Geo2d geo2dv,float *v,Geo2d geo2dt,float *t,
-	int npv,int ixs,int ir, int ian,int nr,float *vo,float *pv,float *tv,float *cs,
-	float *ref_x, float **ref_z, Boundary ***bnd,int dir) 
+	int npv,float *vo,float *pv,float *tv,float *cs) 
 /****************************************************************************
  raytime2d - calculate traveltimes by paraxial ray tracing
 *****************************************************************************
@@ -1110,7 +975,7 @@ Input:
 geo2dt		grid parameters of traveltime 
 geo2dv		grid parameters of velocity 
 v2		sampled velocity array
-raytr		geometry parameters of ray traycing 
+raytr		geometry parameters of ray tarcing 
 
 Output:
 t		traveltime 
@@ -1127,12 +992,11 @@ Author: Zhenyue Liu, CSM 1995.
 		odxo=geo2dt.odx,odzo=geo2dt.odz;
 	float fac=raytr.fac,dt=raytr.dt,fa=raytr.fa,da=raytr.da,xs=raytr.xs;
 	float *vxx,*vxz,*vzz,*s,zs=raytr.zs;
-	float closest_x =INITIAL_T,closest_z=INITIAL_T,closest_t=INITIAL_T;
 	int nrs;
 	Ray *ray;
 
  
- 	int i,ia,ixo,izo,ib;
+ 	int i,ia,ixo,izo;
 	float a,xo,zo,exo,ezo;
 
 /*	variables used for extrapolation	*/
@@ -1140,8 +1004,6 @@ Author: Zhenyue Liu, CSM 1995.
 	float tc,xoc,zoc,xc,zc,r1,v0=0.0,norm2,terr,vd1,cuv,
       		sd,sind,cosd,vd,pxd,pzd,r2,t1,t2,r1x,r2x,t1x,t2x,t2xz,
       		p2d,q2d,gradv[2],d2t[3],dtvd,odt=1.0/dt,xcosd=0.0,*tvd;
-
-
 
 	vxx = alloc1float(nx*nz);
 	vxz = alloc1float(nx*nz);
@@ -1167,11 +1029,10 @@ Author: Zhenyue Liu, CSM 1995.
 		     if(npv) tv[i] = cs[i] = 0.0;
 	}
 
-
 /* 	loop over shooting angles at source point 	*/
-	for(ia=0,a=fa; ia<na; ++ia,a+=da){ 
+	for(ia=0,a=fa; ia<na; ++ia,a+=da){  
 	
-	/* trace rays	*/
+/*		trace rays	*/
 		makeRay(geo2dv,v,vxx,vxz,vzz,raytr,a,&nrs,ray,npv,pv);
 
 /*		extropolate to grids near central rays	*/
@@ -1284,132 +1145,9 @@ Author: Zhenyue Liu, CSM 1995.
  				}
  			}
  		}
-		
 
-		/* Reflection magic */
-
-		switch (dir){
-
-			/*Downgoing rays */
-			case 0:
-				
-				/*Checking if boundary is crossed by ray */
-				for(ib=0; ib<nr; ++ib){
-					for(ixo=0; ixo<nxo; ++ixo){
-						for(it=0; it<nrs; ++it){
-							
-							/* Rounding to nearest grid point */
-							if(round2grid(ray[it].z,dzo) == round2grid(ref_z[ib][ixo],dzo) && \
-							   round2grid(ray[it].x,dxo) == round2grid(ref_x[ixo],dxo)){
-								
-								/* If first loop, first values are closest to z */
-								if(bnd[ib][ixs][ia].flag == 0){
-
-										bnd[ib][ixs][ia].x = ray[it].x;
-										bnd[ib][ixs][ia].z = ray[it].z;
-										bnd[ib][ixs][ia].flag = 1;
-		
-								}
-
-								/* Checks if the current values are closer to boundary z than the ones from previous loops */
-								if(sqrt(pow(abs(ray[it].z - round2grid(ray[it].z,dzo)),2) + pow(abs(ray[it].x - round2grid(ray[it].x,dxo)),2)) <  \
-								   sqrt(pow(abs(bnd[ib][ixs][ia].z - round2grid(ray[it].z,dzo)),2) + pow(abs(bnd[ib][ixs][ia].x - round2grid(ray[it].x,dxo)),2))){
-									   	
-										bnd[ib][ixs][ia].x = ray[it].x;
-										bnd[ib][ixs][ia].z = ray[it].z;
-	
-								}
-							}		
-						}
-					}
-
-					/*Rounding closest values, changing flag for encountering reflector */
-					/* But only if boundary was crossed */
-					if(bnd[ib][ixs][ia].flag == 1){
-						bnd[ib][ixs][ia].x = round2grid(bnd[ib][ixs][ia].x,dxo);
-						bnd[ib][ixs][ia].z = round2grid(bnd[ib][ixs][ia].z,dzo);
-						
-						bnd[ib][ixs][ia].flag = 2;
-					}
-					
-					/*Loop for finding time at the x,z of reflection */
-					for (ixo=0; ixo<nxo; ++ixo){
-						xo = fxo+ixo*dxo;
-						i = ixo*nzo;
-						for (izo=0; izo<nzo; ++izo){
-							zo = fzo+izo*dzo;
-							if(bnd[ib][ixs][ia].x == xo && bnd[ib][ixs][ia].z == zo){
-
-								/*Unfortunately with repeating part that happens later for entire timefield */ 
-								bnd[ib][ixs][ia].t = t[i+izo];
-			  					bnd[ib][ixs][ia].t = MAX(0.0,bnd[ib][ixs][ia].t);
-								if(bnd[ib][ixs][ia].t < 999) bnd[ib][ixs][ia].t = sqrt(bnd[ib][ixs][ia].t);
-								
-							}
- 						}
-					}
-				}
-
-
-				break;
-
-			/* Upgoing rays */
-			case 1:
-
-				for(it=0; it<nrs; ++it){
-					if(round2grid(ray[it].z,dzo) == fzo){
-						
-						/* If this is 1st time it reached surf */
-						if (closest_z == INITIAL_T){
-
-							/* Save all parameters */
-							closest_z = ray[it].z;
-							closest_x = ray[it].x;
-
-						}
-						else {
-							/* If there is already time stored for surface */
-							/* Check if this one is not closer to it and if so, replace */
-							if(abs(ray[it].z - fzo) < abs(closest_z - fzo))
-								closest_z = ray[it].z;
-								closest_x = ray[it].x;
-						}
-
-				
-					}
-				}
-				/* Overwrite downgoing times with sum of down- and up-going */
-				/*If we already found surface hit */ 
-				if (closest_z != INITIAL_T){
-					/*X and Z of the ray hit */
-					bnd[ir][ixs][ian].x =  round2grid(closest_x,dxo);
-					printf("Closest x %f\n",closest_x);
-					printf("Closest z %f\n",closest_z);
-					bnd[ir][ixs][ian].z =  round2grid(closest_z,dzo);
-					bnd[ir][ixs][ian].flag = 3;
-					/*Loop through all time field to get t value for x,z */
-					for (ixo=0; ixo<nxo; ++ixo){
-						xo = fxo+ixo*dxo;
-						i = ixo*nzo;
-						for (izo=0; izo<nzo; ++izo){
-							zo = fzo+izo*dzo;
-							if(bnd[ir][ixs][ian].x == xo && bnd[ir][ixs][ian].z == zo){
-								/* Restrictions from orignal code, repeated i am afraid */
-								if(t[i+izo] > 0.0 && t[i+izo] < 999){
-
-									/*Overwrite of down time with 2WT */
-									bnd[ir][ixs][ian].t += sqrt(t[i+izo]); //!
-								}
-							}
-						}
-					}	
-				}
-				break;
-		
-			default:
-				printf("Uh oh!\n");
-		}
 	}
+
 /*	square root of traveltimes */
 	for (ixo=0; ixo<nxo; ++ixo){ 
 		i = ixo*nzo;
@@ -1438,8 +1176,6 @@ Author: Zhenyue Liu, CSM 1995.
 			  t[i+izo] = sqrt((xo-xs)*(xo-xs)+(zo-zs)*(zo-zs))/v0;
  		}
 	}
-
-
 
 	free1float(vxx);
 	free1float(vxz);
@@ -1730,12 +1466,4 @@ Author: Zhenyue Liu, CSM 1995
 	    *u = (1.0-sx)*((1.0-sz)*v[k0]+sz*v[k1])
       			+sx*((1.0-sz)*v[k2]+sz*v[k3]);
 
-}
-
-/*************************************************************************
-Function to round x or z value of ray to the nearest x,z value of grid
-*************************************************************************/
-float round2grid(float input, float factor)
-{
-	return round(input/factor) * factor;
 }

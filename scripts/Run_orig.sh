@@ -82,9 +82,9 @@ psimage < $vel_model  style=seismic \
 
 
 # use rayt2d to generate traveltime tables from model
-rayt2d_mod fz=$fz nz=$nz dz=$dz fx=$fx nx=$nx dx=$dx \
+rayt2d fz=$fz nz=$nz dz=$dz fx=$fx nx=$nx dx=$dx \
 nxs=$nxs fa=$fa na=$na da=$da fxs=$fxs fzs=$fzs amin=$amin amax=$amax \
-vfile=$vel_model tfile=$time_model refl="0,720;5000,900" refl="0,1300;5000,1100" #refl="0,646;5000;646"
+vfile=$vel_model tfile=$time_model refl="0,720;5000,820" refl="0,900;5000,840" #refl="0,646;5000;646"
 
 #Calculated traveltime cube PS
 pscube < $time_model n1=$nz d1=$dz f1=$fz label1="$labelz" \
