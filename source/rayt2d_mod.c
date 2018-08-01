@@ -10,6 +10,7 @@ char *sdoc[] = {
 "									",
 " RAYT2D_mod - traveltime Tables calculated by 2D paraxial RAY tracing	",
 " With shot positions at arbitrary depth	",
+" and tracing rays from reflector to surface	",
 "									",
 "     rayt2d vfile= tfile= [optional parameters]			",
 "									",
@@ -158,7 +159,8 @@ typedef struct ReflectingBoundary {
 	float x,z;			/* X,Z for ray to encounter */
 	float t;            /* Time it took ray to reach from source */
 	float angle;		/* Angle of incidence for ray */
-	int flag;			/* Flag,0 initial,1 after hitting boundary,2 after done with down,3 all done*/
+	int flag;			/* Flag,0 initial,1 after hitting boundary,2 all done*/
+	float source_t;     /* Time for vertical ray from source to surface */
 } Boundary;
 
 /* Prototypes of functions used internally */
@@ -486,16 +488,31 @@ main(int argc, char **argv)
 
 				/* Switch geometry for upgoing ray	*/
 				/* If there was crossing of ray */
-				if (bnd[ir][ixs][ian].flag == 2){
+				if (bnd[ir][ixs][ian].flag == 1){
 
 					raytr.xs = bnd[ir][ixs][ian].x;		
 					raytr.zs = bnd[ir][ixs][ian].z;
 					raytr.na = 1;
-					nangl_x = round2grid(raytr.xs,dx);
+
+					/*Estimate index for current x */
+					for (ixo=0; ixo<nxo; ++ixo){
+						i = fxo+ixo*dxo;
+						if (round2grid(raytr.xs,dx) == i)
+							nangl_x=ixo;
+					}
+
+					/*Debug
+					printf("Input angle %f\n",bnd[ir][ixs][ian].angle*(180/PI));
+					printf("Nangl_x %d\n",nangl_x);
+					printf("Angle for reflector %f\n",nangl[ir][nangl_x]);
+					printf("Depth for refl %f\n",ref_z[ir][nangl_x]);
+					*/
 
 					//Calculating angle to shot from reflector to surface (make sure signs are ok)					
-					 if (bnd[ir][ixs][ian].angle > 0) raytr.fa =  (PI / 2) + bnd[ir][ixs][ian].angle + nangl[ir][nangl_x];
-					 if	(bnd[ir][ixs][ian].angle < 0) raytr.fa = -(PI / 2) + bnd[ir][ixs][ian].angle + nangl[ir][nangl_x];
+					 if (bnd[ir][ixs][ian].angle >= 0) raytr.fa =  PI - bnd[ir][ixs][ian].angle + nangl[ir][nangl_x];
+					 if	(bnd[ir][ixs][ian].angle < 0) raytr.fa =  -(PI + bnd[ir][ixs][ian].angle + nangl[ir][nangl_x]);
+					
+					//printf("Ref ang %f\n",raytr.fa*(180/PI));
 
 					dir = 1;
 					
@@ -507,8 +524,22 @@ main(int argc, char **argv)
 			};	
 		};
 		
+		/* Shooting one ray upward from the source to surface */
+		/* Geometry for vertical ray */
+		raytr.xs = xs;		raytr.zs = szi[ixs];
+		raytr.na = 1;		raytr.fa = PI;
 
-	
+		/* Shift for one degree, if source on the verge of timefield */
+		if (raytr.xs == fxo) raytr.fa = PI - (PI/180);
+		if (raytr.xs == fxo + (dxo * nxo)) raytr.fa = PI + (PI/180);
+
+		/*Flag for upward ray */
+		dir = 2;
+					
+		raytime2d(raytr,geo2dv,vt,geo2dt,t,npv,ixs,0,0,nsrf,vo,pvt,tv,cs,ref_x,ref_z,bnd,dir);
+
+		dir = 0;
+
 		/*make up in shadow zones by eikonal equation	*/
 		if(ek) eiknl(geo2dt,t_down,ov2,tmax);
 	
@@ -529,12 +560,13 @@ main(int argc, char **argv)
 		if(npv) free1float(pvt);
 
 		/* Write reflection times from boundaries */
-		fprintf(rtfp,"Source %d X=%f\n",ixs+1,xs);
+		fprintf(rtfp,"Source %d X=%f Z=%f\n",ixs+1,xs,fzs);
+		fprintf(rtfp,"Time from source to surf %f\n",bnd[0][ixs][0].source_t);
 		for (ir=0; ir<nsrf; ++ir){
 			fprintf(rtfp,"Reflector %d\n",ir+1);
 			fprintf(rtfp,"X   Z   T\n");
 			for(ian=0;ian<na;++ian){
-				if (bnd[ir][ixs][ian].flag == 3){
+				if (bnd[ir][ixs][ian].flag == 2){
 					fprintf(rtfp,"%f %f %f\n",\
 					bnd[ir][ixs][ian].x,\
 					bnd[ir][ixs][ian].z,\
@@ -638,6 +670,7 @@ void make_ref_struct(int nr,int nxs,int na,int nx,float fa,float da,
 				rr[ir][is][ian].x=INITIAL_T;
 				rr[ir][is][ian].angle=fa0;
 				rr[ir][is][ian].flag=0;
+				rr[ir][is][ian].source_t=INITIAL_T;
 			};
 		};
 	};
@@ -1171,7 +1204,7 @@ Author: Zhenyue Liu, CSM 1995.
 /* 	loop over shooting angles at source point 	*/
 	for(ia=0,a=fa; ia<na; ++ia,a+=da){ 
 	
-	/* trace rays	*/
+/* trace rays	*/
 		makeRay(geo2dv,v,vxx,vxz,vzz,raytr,a,&nrs,ray,npv,pv);
 
 /*		extropolate to grids near central rays	*/
@@ -1322,15 +1355,6 @@ Author: Zhenyue Liu, CSM 1995.
 							}		
 						}
 					}
-
-					/*Rounding closest values, changing flag for encountering reflector */
-					/* But only if boundary was crossed */
-					if(bnd[ib][ixs][ia].flag == 1){
-						bnd[ib][ixs][ia].x = round2grid(bnd[ib][ixs][ia].x,dxo);
-						bnd[ib][ixs][ia].z = round2grid(bnd[ib][ixs][ia].z,dzo);
-						
-						bnd[ib][ixs][ia].flag = 2;
-					}
 					
 					/*Loop for finding time at the x,z of reflection */
 					for (ixo=0; ixo<nxo; ++ixo){
@@ -1338,12 +1362,17 @@ Author: Zhenyue Liu, CSM 1995.
 						i = ixo*nzo;
 						for (izo=0; izo<nzo; ++izo){
 							zo = fzo+izo*dzo;
-							if(bnd[ib][ixs][ia].x == xo && bnd[ib][ixs][ia].z == zo){
+							if(round2grid(bnd[ib][ixs][ia].x,dxo) == xo && round2grid(bnd[ib][ixs][ia].z,dzo) == zo){
 
 								/*Unfortunately with repeating part that happens later for entire timefield */ 
 								bnd[ib][ixs][ia].t = t[i+izo];
 			  					bnd[ib][ixs][ia].t = MAX(0.0,bnd[ib][ixs][ia].t);
-								if(bnd[ib][ixs][ia].t < 999) bnd[ib][ixs][ia].t = sqrt(bnd[ib][ixs][ia].t);
+								if (bnd[ib][ixs][ia].t < 999){
+									bnd[ib][ixs][ia].t = sqrt(bnd[ib][ixs][ia].t);
+								}
+								else {
+									bnd[ib][ixs][ia].t = 0.0;
+								}
 								
 							}
  						}
@@ -1383,10 +1412,8 @@ Author: Zhenyue Liu, CSM 1995.
 				if (closest_z != INITIAL_T){
 					/*X and Z of the ray hit */
 					bnd[ir][ixs][ian].x =  round2grid(closest_x,dxo);
-					printf("Closest x %f\n",closest_x);
-					printf("Closest z %f\n",closest_z);
 					bnd[ir][ixs][ian].z =  round2grid(closest_z,dzo);
-					bnd[ir][ixs][ian].flag = 3;
+					bnd[ir][ixs][ian].flag = 2;
 					/*Loop through all time field to get t value for x,z */
 					for (ixo=0; ixo<nxo; ++ixo){
 						xo = fxo+ixo*dxo;
@@ -1396,9 +1423,11 @@ Author: Zhenyue Liu, CSM 1995.
 							if(bnd[ir][ixs][ian].x == xo && bnd[ir][ixs][ian].z == zo){
 								/* Restrictions from orignal code, repeated i am afraid */
 								if(t[i+izo] > 0.0 && t[i+izo] < 999){
-
 									/*Overwrite of down time with 2WT */
 									bnd[ir][ixs][ian].t += sqrt(t[i+izo]); //!
+								}
+								else {
+									bnd[ir][ixs][ian].flag = 1;
 								}
 							}
 						}
@@ -1406,6 +1435,58 @@ Author: Zhenyue Liu, CSM 1995.
 				}
 				break;
 		
+			case 2:
+				for(it=0; it<nrs; ++it){
+					if(round2grid(ray[it].z,dzo) == fzo){
+						
+						/* If this is 1st time it reached surf */
+						if (closest_z == INITIAL_T){
+
+							/* Save all parameters */
+							closest_z = ray[it].z;
+							closest_x = ray[it].x;
+
+						}
+						else {
+							/* If there is already time stored for surface */
+							/* Check if this one is not closer to it and if so, replace */
+							if(abs(ray[it].z - fzo) < abs(closest_z - fzo))
+								closest_z = ray[it].z;
+								closest_x = ray[it].x;
+						}
+
+				
+					}
+				}
+				
+				/*If we already found surface hit */ 
+				if (closest_z != INITIAL_T){
+
+					/*X and Z of the ray hit */
+					closest_x =  round2grid(closest_x,dxo);
+					closest_z =  round2grid(closest_z,dzo);
+					
+					/*Loop through all time field to get t value for x,z */
+					for (ixo=0; ixo<nxo; ++ixo){
+						xo = fxo+ixo*dxo;
+						i = ixo*nzo;
+
+						for (izo=0; izo<nzo; ++izo){
+							zo = fzo+izo*dzo;
+							if(closest_x == xo && closest_z == zo){
+								/* Restrictions from orignal code, repeated i am afraid */
+								if(t[i+izo] > 0.0 && t[i+izo] < 999){
+									/*Record time from source to surface in  array for ray 0, angle 0*/
+									bnd[ir][ixs][ian].source_t = sqrt(t[i+izo]);
+								}
+								else{
+									bnd[ir][ixs][ian].source_t = 0.0;
+								}
+							}
+						}
+					}	
+				}
+				break;
 			default:
 				printf("Uh oh!\n");
 		}

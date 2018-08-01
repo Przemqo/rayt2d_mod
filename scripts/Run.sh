@@ -3,13 +3,13 @@
 ##############FOR OBS DATA#######################
 #################################################
 #Converting .tomo velocity format to 2d grid
-#vtomo2xyz < gr_nmo_test4.tomo > gr_nmo_test4_tomo.txt 
+vtomo2xyz < gr_nmo_test4.tomo > gr_nmo_test4_tomo.txt 
 
 #Extracting velocities from all gridpoints 
-#awk -F "\"* \"*" '{print $3*1000}' gr_nmo_test4_tomo.txt > gr_nmo_test4_tomo_vmodel.txt 
+awk -F "\"* \"*" '{print $3*1000}' gr_nmo_test4_tomo.txt > gr_nmo_test4_tomo_vmodel.txt 
 
 #Creating velocity model
-#a2b < gr_nmo_test4_tomo_vmodel.txt n1=1 > nmo_test_model.bin 
+a2b < gr_nmo_test4_tomo_vmodel.txt n1=1 > nmo_test_model.bin 
 #################################################
 
 
@@ -31,8 +31,8 @@ rm -f < $vel_model
 rm -f < $vel_eps
 rm -f < $time_model
 
-#Create model
-unif2 < $vel_par nx=251 nz=151 dx=20 dz=20 > $vel_model
+#Create dipping model model
+#unif2 < $vel_par nx=251 nz=151 dx=20 dz=20 > $vel_model
 
 #Input parameters for Rayt2d
 #dt=0.004       #time sample interval in ray tracing             
@@ -46,21 +46,16 @@ nx=251        	#number of lateral samples in velocity
 dx=20         	#lateral interval in velocity    
 
 nxs=1			#Number of sources      &
-fzs=80          #Depth of the sources fzs=$fzs
-fxs=0           #Coordinate of first source fxs=$fxs
+fzs=0         	#Depth of the sources fzs=$fzs
+fxs=2500      	#Coordinate of first source fxs=$fxs
 
-fa=-60 			#First take-off angle
-na=60			#Number of rays
-da=2         #Increment of take-off angle fa=$fa na=$na 
+fa=-90			#First take-off angle
+na=181			#Number of rays
+da=1         	#Increment of take-off angle fa=$fa na=$na 
 
 
 amin=0          #Minimum angle of emergence
 amax=180        #Maximum angle of emergence amin=$amin amax=$amax
-
-#Reflector surface
-#surf="0,740;99999,740" surf=$surf
-#refl="0,740;99999,740"
-#refl="0,780;99999,780"
 
 
 #smooth2 n1=151 n2=251 r1=5 r2=5 < $vel_model > temp.bin
@@ -84,7 +79,7 @@ psimage < $vel_model  style=seismic \
 # use rayt2d to generate traveltime tables from model
 rayt2d_mod fz=$fz nz=$nz dz=$dz fx=$fx nx=$nx dx=$dx \
 nxs=$nxs fa=$fa na=$na da=$da fxs=$fxs fzs=$fzs amin=$amin amax=$amax \
-vfile=$vel_model tfile=$time_model refl="0,720;5000,900" refl="0,1300;5000,1100" #refl="0,646;5000;646"
+vfile=$vel_model tfile=$time_model refl="0,720;5000,720" #refl="0,1300;5000,1100" 
 
 #Calculated traveltime cube PS
 pscube < $time_model n1=$nz d1=$dz f1=$fz label1="$labelz" \
