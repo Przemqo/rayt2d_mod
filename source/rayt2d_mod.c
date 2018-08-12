@@ -159,7 +159,8 @@ typedef struct ReflectingBoundary {
 	float x,z;			/* X,Z for ray to encounter */
 	float t;            /* Time it took ray to reach from source */
 	float angle;		/* Angle of incidence for ray */
-	int flag;			/* Flag,0 initial,1 after hitting boundary,2 all done*/
+	int flag;			/* Flag,0 initial,1 after hitting boundary,2 upgoing,3 averaged for 
+						   rays ending at the roughly same x position*/
 	float source_t;     /* Time for vertical ray from source to surface */
 } Boundary;
 
@@ -200,6 +201,10 @@ void make_ref_struct(int nr,int nxs,int na,int nx,float fa,float da,
 
 float round2grid(float input, float factor);
 
+void ray_avg(Boundary ***bnd,int source_nr,int ref_nr,int n_angles);
+
+int compare_bnd(const void *a,const void *b);
+
 int
 main(int argc, char **argv)
 {
@@ -213,7 +218,7 @@ main(int argc, char **argv)
 
 	Geo2d geo2dv, geo2dt;
 	Raytr raytr;
-	Boundary ***bnd;
+	Boundary ***bnd,*one_d_struct;
 	Surface *srf;
 
 	char *vfile="stdin",*tfile="stdout",*jpfile,*pvfile,*tvfile,*csfile,*rtfile;
@@ -556,17 +561,24 @@ main(int argc, char **argv)
 		  fprintf(jpfp," traveltime computed at source xs=%g\n",xs);
 		  fflush(jpfp);
 		}
+
 		free1float(vt);
 		if(npv) free1float(pvt);
 
-		/* Write reflection times from boundaries */
+	}
+
+	/* Write reflection times from boundaries */
+	for(ixs=0;ixs<nxs;ixs++){
 		fprintf(rtfp,"Source %d X=%f Z=%f\n",ixs+1,xs,fzs);
 		fprintf(rtfp,"Time from source to surf %f\n",bnd[0][ixs][0].source_t);
 		for (ir=0; ir<nsrf; ++ir){
+			one_d_struct=bnd[ir][ixs];
+			qsort(one_d_struct,na,sizeof(Boundary),compare_bnd);
+			ray_avg(bnd,ixs,ir,na);
 			fprintf(rtfp,"Reflector %d\n",ir+1);
 			fprintf(rtfp,"X   Z   T\n");
 			for(ian=0;ian<na;++ian){
-				if (bnd[ir][ixs][ian].flag == 2){
+				if (bnd[ir][ixs][ian].flag == 3){
 					fprintf(rtfp,"%f %f %f\n",\
 					bnd[ir][ixs][ian].x,\
 					bnd[ir][ixs][ian].z,\
@@ -1819,4 +1831,99 @@ Function to round x or z value of ray to the nearest x,z value of grid
 float round2grid(float input, float factor)
 {
 	return round(input/factor) * factor;
+}
+
+/*************************************************************************
+ * ray_avg goes through all array and replaces time for rays ending at the 
+ * same x position with average value of all rays ending there 
+ * Note: it only writes avg time for the first time at given X
+ * So to differentiate it from the rest while writing to file,
+ * It changes the .flag parameter of the struct to 3. All other values
+ * for the same X position remain unchanged
+ * 
+ * Input:
+ * bnd - dynamic array holding all the values from raytracing
+ * source_nr - current source index
+ * n_ref - number of reflecting boundaries
+ * n_angles - number of rays (angles) per shot
+ *************************************************************************/
+
+void ray_avg(Boundary ***bnd,int source_nr,int ref_nr,int n_angles)
+{
+	int i_angl,j_angl,*n_occur,count,i_occur;
+	float temp_time;
+
+	/*Array for holding number of occurences for given X */
+	n_occur=(int*)calloc(n_angles,sizeof(int));
+	
+	/*Initial value -1 for all rays */
+	for(i_angl=0;i_angl<n_angles;++i_angl) n_occur[i_angl]=-1;
+
+
+	/* Go through all the rays and find the number of occurences for specific X*/
+	for(i_angl=0;i_angl<n_angles;++i_angl)
+	{
+		count = 1;
+		for(j_angl=i_angl+1;j_angl<n_angles;++j_angl)
+		{
+			if(bnd[ref_nr][source_nr][i_angl].x == bnd[ref_nr][source_nr][j_angl].x
+			&& bnd[ref_nr][source_nr][i_angl].x != INITIAL_T)
+			{
+				count++;
+				n_occur[j_angl]=0;
+			}
+		}
+
+		/*Write final count for given X */
+		if(n_occur[i_angl] != 0)
+        {
+            n_occur[i_angl] = count;
+        }
+	}
+
+	/*Go through all rays, sum all occuring times for given x
+	then divide through number of occurencies */
+	for(i_angl=0;i_angl<n_angles;++i_angl)
+    {
+		temp_time=0;
+		if(n_occur[i_angl] != 0 && (bnd[ref_nr][source_nr][i_angl].flag == 2))
+		{
+			/*Sum all times for given x */
+			for(i_occur=0;i_occur<n_occur[i_angl];i_occur++)
+			{
+				temp_time += bnd[ref_nr][source_nr][i_angl+i_occur].t;
+			}
+
+			/*Replace first occurence with average time */
+			bnd[ref_nr][source_nr][i_angl].t = temp_time/n_occur[i_angl];
+
+			/*Change flag for avg time so it can be differed from remaining times
+			stored for a given X (So only avg time will be written to file)*/
+			bnd[ref_nr][source_nr][i_angl].flag=3;
+			
+		}
+	}
+
+	free(n_occur);
+}
+
+/*************************************************************************
+ * compare_bnd is a comparison function for 1d array of structs (Boundary*)
+ * used for sorting rays by x coordinate using qsort function included in
+ * stdlib.h (qsort requires definining comparison function)
+ * 
+ * It takes pointers to 2 objects being compared and defines a criteria of
+ * comparison(in this case it returns integer value based on whether or not
+ * x current is lesser or greater than x previous)
+ *************************************************************************/ 
+int compare_bnd(const void *a,const void *b)
+{
+	const Boundary p1 = *(const Boundary*)a;
+	const Boundary p2 = *(const Boundary*)b;
+	if (p1.x < p2.x)
+        return -1;
+    else if (p1.x > p2.x)
+        return 1;
+    else
+        return 0;
 }
