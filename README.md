@@ -29,7 +29,7 @@ You need to download a repository and edit Compile.sh with correct path to sourc
 
 Use just name of the program (rayt2d_mod) to bring internal help file
 
-Example of running script for OBS data is in Run.sh
+Example of running script for OBS data is in \scripts\Run.sh
 
 ## Acknowledgments
 Author:  Zhenyue Liu, 10/11/94,  Colorado School of Mines
